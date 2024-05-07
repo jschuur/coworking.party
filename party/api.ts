@@ -20,7 +20,9 @@ const statusUpdateSchema = z
     status: z
       .string()
       .refine((status: string) => userSelectableStatusOptions.includes(status), {
-        message: 'Invalid selectable status option',
+        message: `Invalid selectable status options, available options are: ${
+          userSelectableStatusOptions.join(', ')
+        }`,
       })
       .optional(),
   })
