@@ -55,6 +55,10 @@ export async function parseApiRequest({ request, partyServer }: parseApiRequestP
       return await statusUpdate({ request, users });
     }
 
+    if (method === 'GET' && path === '/staus') {
+      return await getStatuses();
+    }
+
     if (method === 'GET' && path === '/debug') {
       return debugInfo(partyServer);
     }
@@ -120,6 +124,12 @@ export async function statusUpdate({ request, users }: StatusUpdateParams) {
       { status: 500 }
     );
   }
+}
+
+export async function getStatuses(){
+  return new Response(JSON.stringify({ status: `success`, userSelectableStatusOptions }, null, 2), {
+    status: 200,
+  });
 }
 
 export async function debugInfo(partyServer: Server) {
