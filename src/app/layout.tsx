@@ -35,13 +35,12 @@ export default async function RootLayout({
 
   return (
     <html lang='en'>
+      <link rel='manifest' href='/manifest.json' />
       <body className={cn('font-sans antialiased bg-purple-100', fontSans.variable)}>
         <Providers session={session}>
           <div className='flex min-h-screen flex-col'>
             <Header />
-            <main className='flex-grow justify-center items-center xs:mx-auto px-6'>
-              {children}
-            </main>
+            <main className='xs:mx-auto px-6 grow'>{children}</main>
             <Footer />
             {googleAnalyticsId && <GoogleAnalytics gaId={googleAnalyticsId} />}
           </div>

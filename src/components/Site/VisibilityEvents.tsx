@@ -1,3 +1,5 @@
+'use client';
+
 import { useAtomValue } from 'jotai';
 import { useSession } from 'next-auth/react';
 import posthog from 'posthog-js';
@@ -26,7 +28,7 @@ export default function VisibilityEvents() {
     if (isVisible) {
       if (awayTimeout) clearTimeout(awayTimeout);
 
-      updateUserData({ away: false, awayStartedAt: null });
+      updateUserData({ data: { away: false, awayStartedAt: null } });
 
       const awayTime = awayStartTimeRef.current
         ? new Date().getTime() - awayStartTimeRef.current
@@ -41,7 +43,7 @@ export default function VisibilityEvents() {
         if (document.visibilityState === 'hidden') {
           const now = new Date();
 
-          updateUserData({ away: true, awayStartedAt: now });
+          updateUserData({ data: { away: true, awayStartedAt: now } });
           awayStartTimeRef.current = now.getTime();
 
           posthog.capture('user away', {

@@ -7,7 +7,7 @@ import { fromError } from 'zod-validation-error';
 import { MAX_TAGLINE_LENGTH } from '@/config';
 import { getUserDataByApiKey } from '@/db/queries';
 import { userPublicDataSchema } from '@/lib/types';
-import { getErrorMessage } from '@/lib/utils';
+import { debug, getErrorMessage } from '@/lib/utils';
 import { userSelectableStatusOptions } from '@/statusConfig';
 
 import type Server from '@/party/server';
@@ -40,6 +40,7 @@ export async function parseApiRequest({ request, partyServer }: parseApiRequestP
 
     const { method, url } = request;
     const path = new URL(url).pathname.replace('/party/main', '');
+    debug('API request:', { method, path });
 
     posthog.capture('api request', { method, path });
 
@@ -61,6 +62,10 @@ export async function parseApiRequest({ request, partyServer }: parseApiRequestP
 
     if (method === 'GET' && path === '/debug') {
       return debugInfo(partyServer);
+    }
+
+    if (method === 'GET' && path === '/reset') {
+      return await resetStorage({ partyServer, request });
     }
 
     return new Response(null, { status: 405 });
@@ -93,7 +98,7 @@ export async function statusUpdate({ request, users }: StatusUpdateParams) {
       );
     }
 
-    const [user] = await getUserDataByApiKey(result.data.apiKey);
+    const user = await getUserDataByApiKey(result.data.apiKey);
     if (!user) {
       posthog.capture('status api request error', { type: 'user/API key not found' });
 
@@ -155,4 +160,38 @@ export async function debugInfo(partyServer: Server) {
   }
 
   return new Response(JSON.stringify(debugData, null, 2), { status: 200 });
+}
+
+type ResetStorageParams = {
+  partyServer: Server;
+  request: Party.Request;
+};
+async function resetStorage({ partyServer, request }: ResetStorageParams) {
+  try {
+    const url = new URL(request.url);
+    const adminSecret = url.searchParams.get('secret');
+
+    if (adminSecret !== process.env.ADMIN_SECRET)
+      return new Response(JSON.stringify({ status: 'error', message: 'Unauthorized access' }), {
+        status: 403,
+      });
+
+    const connectedUserIds =
+      (await partyServer.room.storage.get<string[]>('connectedUserIds')) || [];
+    await partyServer.room.storage.put('connectedUserIds', []);
+    partyServer.users.list = [];
+
+    return new Response(
+      JSON.stringify({
+        status: 'success',
+        removedUserIds: connectedUserIds,
+        removedUserIdCount: connectedUserIds?.length,
+      }),
+      { status: 200 }
+    );
+  } catch (err) {
+    return new Response(JSON.stringify({ status: 'error', message: getErrorMessage(err) }), {
+      status: 500,
+    });
+  }
 }

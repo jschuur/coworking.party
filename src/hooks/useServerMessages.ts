@@ -16,6 +16,7 @@ import {
   ServerMessageRemoveUser,
   ServerMessageServerMetaData,
   ServerMessageUpdatePublicData,
+  ServerMessageUpdateSuccess,
   ServerMessageUserData,
   ServerMessageUserList,
 } from '@/party/serverMessages';
@@ -86,6 +87,10 @@ export default function useServerMessages({ ws }: Props) {
     toast.error(`Server error: ${message}`);
   };
 
+  const processUpdateSuccessMessage = ({ message }: ServerMessageUpdateSuccess) => {
+    toast.success(message);
+  };
+
   // update a user's data in a local list
   const processUpdateUsersPublicDataMessage = ({ userId, data }: ServerMessageUpdatePublicData) => {
     debug('updateUsersPublicData client message', userId, data);
@@ -93,12 +98,17 @@ export default function useServerMessages({ ws }: Props) {
     updateUser(userId, data);
 
     // react to other people's updates
-    if (userData && userId !== userData.userId) {
-      if (data.tagline) {
-        shootConfetti({ source: 'list tagline update' });
-        playListStatusUpdated();
-      } else if (data.status) {
-        playListStatusUpdated();
+    if (userData) {
+      if (userId !== userData.userId) {
+        if (data.tagline) {
+          shootConfetti({ source: 'list tagline update' });
+          playListStatusUpdated();
+        } else if (data.status) {
+          playListStatusUpdated();
+        }
+      } else {
+        // update your own user data if it's you (at least the public data)
+        setUserData({ ...userData, ...data });
       }
     }
   };
@@ -130,6 +140,9 @@ export default function useServerMessages({ ws }: Props) {
           break;
         case 'errorEncountered':
           processErrorEncounteredMessage(msg);
+          break;
+        case 'updateSuccess':
+          processUpdateSuccessMessage(msg);
           break;
         case 'serverMetaData':
           processServerMetaDataMessage(msg);

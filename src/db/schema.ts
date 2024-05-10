@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 import type { AdapterAccount } from 'next-auth/adapters';
 import { v4 as uuidv4 } from 'uuid';
@@ -74,10 +74,8 @@ export const userData = sqliteTable(
       .primaryKey()
       .$defaultFn(() => uuidv4())
       .references(() => users.id, { onDelete: 'cascade' }),
-    name: text('name'),
-    image: text('image'),
     tagline: text('tagline'),
-    status: text('status').notNull().default('offline'),
+    status: text('status').notNull().default('online'),
     statusChangedAt: integer('statusChangedAt', { mode: 'timestamp_ms' }),
     away: integer('away', { mode: 'boolean' }).notNull().default(false),
     awayStartedAt: integer('awayStartedAt', { mode: 'timestamp_ms' }),
@@ -97,9 +95,22 @@ export const userData = sqliteTable(
       .$type<string[]>()
       .notNull()
       .default(sql`[]`),
-    email: text('email').unique(),
   },
   (ud) => ({
     userIdIdx: index('UserData_userId_index').on(ud.userId),
   })
 );
+
+export const userDataRelations = relations(userData, ({ one }) => ({
+  user: one(users, {
+    fields: [userData.userId],
+    references: [users.id],
+  }),
+}));
+
+export const usersRelations = relations(users, ({ one }) => ({
+  userData: one(userData, {
+    fields: [users.id],
+    references: [userData.userId],
+  }),
+}));

@@ -1,7 +1,14 @@
 import Party from 'partykit/server';
 
-import { getUser, getUserDataByUserId, setUserData, updateUserData } from '@/db/queries';
-import { getErrorMessage } from '@/lib/utils';
+import { newUserAdjectives } from '@/config';
+import {
+  getUser,
+  getUserAccounts,
+  getUserDataByUserId,
+  setUserData,
+  updateUserData,
+} from '@/db/queries';
+import { capitaliseFirst, debug, getErrorMessage } from '@/lib/utils';
 import { buildServerMessage } from '@/party/messages';
 
 import { UserData, UserDataInsert } from '@/lib/types';
@@ -9,20 +16,20 @@ import { ServerMessageErrorEncountered } from '@/party/serverMessages';
 
 export async function getUserData(userId: string): Promise<UserData> {
   try {
-    let userData: UserData = await getUserDataByUserId(userId);
+    let userData: UserData | null = await getUserDataByUserId(userId);
     const now = new Date();
 
     if (!userData) {
       const fullUserInfo = await getUser(userId);
 
-      if (!fullUserInfo) throw Error(`User not found for initial userData population: ${userId}`);
+      if (!fullUserInfo)
+        throw new Error(
+          `User not found for initial userData population, creating new entry: ${userId}`
+        );
 
       const newUserData: UserDataInsert = {
-        email: fullUserInfo.email,
-        name: fullUserInfo.name,
-        image: fullUserInfo.image,
         tagline: null,
-        status: 'offline',
+        status: 'online',
         away: false,
         connections: [],
         createdAt: now,
@@ -30,7 +37,14 @@ export async function getUserData(userId: string): Promise<UserData> {
         sessionStartedAt: now,
       };
 
-      userData = (await setUserData(userId, newUserData))[0];
+      userData = {
+        ...(await setUserData(userId, newUserData))[0],
+        name: fullUserInfo.name || '',
+        email: fullUserInfo.email || '',
+        image: fullUserInfo.image,
+      };
+
+      newUserNotification(userData);
     } else {
       await updateUserData(userId, { lastConnectedAt: now });
 
@@ -39,8 +53,25 @@ export async function getUserData(userId: string): Promise<UserData> {
 
     return userData;
   } catch (err) {
-    throw Error(`Error in getUserData: ${getErrorMessage(err)}`);
+    throw new Error(`Error in getUserData: ${getErrorMessage(err)}`);
   }
+}
+
+async function newUserNotification(user: UserData) {
+  const [account] = await getUserAccounts(user.userId);
+  const { provider, providerAccountId } = account || {};
+
+  const randomAdjective = newUserAdjectives[Math.floor(Math.random() * newUserAdjectives.length)];
+
+  let message = `A new ${randomAdjective} user has joined the party 🎉: `;
+  if (provider) {
+    if (provider === 'twitch')
+      message += `${user.name} (via Twitch: <https://twitch.tv/${user.name}>)`;
+    else if (provider === 'discord') message += `<@${providerAccountId}> (via Discord)`;
+    else message += `${user.name} (via ${capitaliseFirst(account.provider)}`;
+  }
+
+  await discordNotification(message);
 }
 
 type ReturnErrorParams = {
@@ -51,7 +82,7 @@ type ReturnErrorParams = {
 export function processError({ err, connection, source }: ReturnErrorParams) {
   const message = getErrorMessage(err);
 
-  console.error('Error adding user: ', message);
+  console.error(`Error in ${source}: `, message);
 
   if (connection)
     connection.send(
@@ -61,4 +92,24 @@ export function processError({ err, connection, source }: ReturnErrorParams) {
         message,
       })
     );
+}
+
+export async function discordNotification(message: string) {
+  if (!process.env.DISCORD_WEBHOOK_URL)
+    debug('No DISCORD_WEBHOOK_URL set, skipping Discord notification.');
+  else {
+    const webhookUrls = process.env.DISCORD_WEBHOOK_URL.split(',');
+
+    for (const url of webhookUrls) {
+      debug('Sending Discord notification:', { message, url });
+
+      await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ content: message }),
+      });
+    }
+  }
 }

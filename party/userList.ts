@@ -142,7 +142,7 @@ export class UserList {
 
         await updateUserData(userId, userUpdates);
 
-        await this.persistUserList();
+        await this.persistUserList({ connection });
       }
 
       // send user their full data and the full user list (even for additional connection)
@@ -166,10 +166,23 @@ export class UserList {
 
   async updateUserData({ data, userId, connection }: UpdateUserDataParams) {
     try {
-      if (!userId) {
-        console.error('No userId provided for updateUserData');
+      if (!userId) throw new Error('No userId provided for updateUserData');
 
-        return { wasConnected: false };
+      if (connection) {
+        // make sure user is only updating their own data
+        // these should be non API updates
+        const userIdByConnection = this.users.find((u) =>
+          u.connections.includes(connection.id)
+        )?.userId;
+
+        if (!userIdByConnection || userIdByConnection !== userId)
+          throw new Error(
+            `User ID mismatch in updatedUserData: ${JSON.stringify({
+              userId,
+              userIdByConnection,
+              connectionId: connection.id,
+            })}`
+          );
       }
 
       const userIndex = this.users.findIndex((u) => u.userId === userId);
@@ -177,6 +190,8 @@ export class UserList {
 
       // update the connected user's data on the server
       if (wasConnected) {
+        if (data.status) data.statusChangedAt = new Date();
+
         this.users[userIndex] = { ...this.users[userIndex], ...data };
 
         this.partyServer.room.broadcast(
@@ -191,7 +206,7 @@ export class UserList {
       // persist the update to the database, even if they weren't connected
       await updateUserData(userId, data);
 
-      return { wasConnected };
+      return { wasConnected, success: true };
     } catch (err) {
       processError({ err, connection, source: 'updateUserData' });
 
@@ -242,7 +257,7 @@ export class UserList {
             })
           );
 
-          await this.persistUserList();
+          await this.persistUserList({ connection });
 
           // reset some status fields at the end of a session, but not everything,
           // in case they reconnect within the grace period
@@ -264,20 +279,24 @@ export class UserList {
   }
 
   // save the list of user IDs to restore them on server restart
-  async persistUserList() {
-    const connectedUserIds = this.users.map((u) => u.userId);
+  async persistUserList({ connection }: { connection?: Party.Connection<unknown> }) {
+    try {
+      const connectedUserIds = this.users.map((u) => u.userId);
 
-    await this.partyServer.room.storage.put('connectedUserIds', connectedUserIds);
+      await this.partyServer.room.storage.put('connectedUserIds', connectedUserIds);
 
-    if (connectedUserIds.length > 0)
-      debug(
-        `User list with ${pluralize(
-          'connected user',
-          connectedUserIds.length,
-          true
-        )} persisted to storage`,
-        { connectedUserIds }
-      );
-    else debug(`Empty list persisted to storage for connected users. No more users connected.`);
+      if (connectedUserIds.length > 0)
+        debug(
+          `User list with ${pluralize(
+            'connected user',
+            connectedUserIds.length,
+            true
+          )} persisted to storage`,
+          { connectedUserIds }
+        );
+      else debug(`Empty list persisted to storage for connected users. No more users connected.`);
+    } catch (err) {
+      processError({ err, connection, source: 'persistUserList' });
+    }
   }
 }
