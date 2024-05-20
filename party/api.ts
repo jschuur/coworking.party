@@ -20,7 +20,9 @@ const statusUpdateSchema = z
     status: z
       .string()
       .refine((status: string) => userSelectableStatusOptions.includes(status), {
-        message: 'Invalid selectable status option',
+        message: `Invalid selectable status options, available options are: ${
+          userSelectableStatusOptions.join(', ')
+        }`,
       })
       .optional(),
   })
@@ -52,6 +54,10 @@ export async function parseApiRequest({ request, partyServer }: parseApiRequestP
 
     if (method === 'POST' && path === '/status') {
       return await statusUpdate({ request, users });
+    }
+
+    if (method === 'GET' && path === '/staus') {
+      return await getStatuses();
     }
 
     if (method === 'GET' && path === '/debug') {
@@ -123,6 +129,12 @@ export async function statusUpdate({ request, users }: StatusUpdateParams) {
       { status: 500 }
     );
   }
+}
+
+export async function getStatuses(){
+  return new Response(JSON.stringify({ status: `success`, userSelectableStatusOptions }, null, 2), {
+    status: 200,
+  });
 }
 
 export async function debugInfo(partyServer: Server) {
